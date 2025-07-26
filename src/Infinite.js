@@ -1,5 +1,17 @@
-﻿// Updated Infinite.js with box styling, collapsible menu, and duplicate functionality
+﻿// Updated with enhanced styling and fixed duplication
 import React, { useState } from "react";
+import { v4 as uuidv4 } from "uuid";
+import ReactFlow, {
+  Background,
+  BackgroundVariant,
+  ReactFlowProvider,
+  useNodesState,
+  useEdgesState,
+  addEdge,
+  Handle,
+  Position
+} from "reactflow";
+import "reactflow/dist/style.css";
 
 const Card = ({ children, className }) => (
   <div className={`border rounded shadow ${className || ''}`}>{children}</div>
@@ -36,18 +48,6 @@ const Textarea = ({ value, onChange, ...props }) => (
   />
 );
 
-import { v4 as uuidv4 } from "uuid";
-import ReactFlow, {
-  Background,
-  BackgroundVariant,
-  ReactFlowProvider,
-  useNodesState,
-  useEdgesState,
-  addEdge,
-  Handle,
-  Position
-} from "reactflow";
-import "reactflow/dist/style.css";
 
 const SelectBox = ({ selected, onToggle }) => (
   <div
@@ -105,13 +105,41 @@ const ProConInput = ({ label, items, setItems }) => {
   );
 };
 
-const nodeBackgrounds = {
-  reason: "bg-yellow-100",
-  option: "bg-blue-100",
-  outcome: "bg-green-100",
-  event: "bg-gray-200",
-  boxzero: "bg-purple-100"
+const nodeStyles = {
+  reason: {
+    bg: "bg-yellow-100",
+    border: "border-yellow-400 border-2",
+  },
+  option: {
+    bg: "bg-blue-100",
+    border: "border-blue-400 border-2",
+  },
+  outcome: {
+    bg: "bg-green-100",
+    border: "border-green-400 border-2",
+  },
+  event: {
+    bg: "bg-gray-200",
+    border: "border-gray-500 border-2",
+  },
+  boxzero: {
+    bg: "bg-purple-100",
+    border: "border-purple-400 border-2",
+  },
 };
+
+const NodeWrapper = ({ children, data, title, type }) => (
+  <Card className={`relative w-72 ${nodeStyles[type].border} ${nodeStyles[type].bg}`}>
+    <CardContent className="p-3 space-y-2">
+      <SelectBox selected={data.selected} onToggle={data.onToggle} />
+      <OptionsButton onDelete={data.onDelete} onDuplicate={data.onDuplicate} />
+      <div className="text-sm font-bold mb-2">{title}</div>
+      {children}
+      <Handle type="target" position={Position.Top} />
+      <Handle type="source" position={Position.Bottom} />
+    </CardContent>
+  </Card>
+);
 
 const nodeTypes = {
   reason: ({ data }) => <NodeWrapper data={data} title="Reason" type="reason"><Textarea value={data.label} onChange={(e) => data.onChange(e.target.value)} /></NodeWrapper>,
@@ -130,18 +158,6 @@ const nodeTypes = {
   boxzero: ({ data }) => <NodeWrapper data={data} title="Decision Topic" type="boxzero"><Textarea value={data.label} onChange={(e) => data.onChange(e.target.value)} /></NodeWrapper>
 };
 
-const NodeWrapper = ({ children, data, title, type }) => (
-  <Card className={`relative w-72 border-2 ${nodeBackgrounds[type]}`}>
-    <CardContent className="p-2 space-y-2">
-      <SelectBox selected={data.selected} onToggle={data.onToggle} />
-      <OptionsButton onDelete={data.onDelete} onDuplicate={data.onDuplicate} />
-      <div className="text-sm font-bold">{title}</div>
-      {children}
-      <Handle type="target" position={Position.Top} />
-      <Handle type="source" position={Position.Bottom} />
-    </CardContent>
-  </Card>
-);
 
 const Infinite = () => {
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
@@ -196,9 +212,41 @@ const Infinite = () => {
   const duplicateNode = (id) => {
     const original = nodes.find((n) => n.id === id);
     if (!original) return;
-    addNode(original.type, original.data);
-  };
+    
+    const newId = uuidv4();
+    const newNode = {
+      ...original,
+      id: newId,
+      position: { 
+        x: original.position.x + 50,
+        y: original.position.y + 50 
+      },
+      data: {
+        ...original.data,
+        selected: false,
+        onChange: (val) => updateNodeData(newId, { label: val }),
+        onProbabilityChange: (val) => updateNodeData(newId, { probability: val }),
+        setPros: (items) => updateNodeData(newId, { pros: items }),
+        setCons: (items) => updateNodeData(newId, { cons: items }),
+        onToggle: () => toggleSelect(newId),
+        onDelete: () => deleteNode(newId),
+        onDuplicate: () => duplicateNode(newId),
+      }
+    };
+    
+    setNodes((nds) => [...nds, newNode]);
 
+    // Duplicate connected edges
+    const originalEdges = edges.filter(e => e.source === id || e.target === id);
+    const newEdges = originalEdges.map(edge => ({
+      ...edge,
+      id: uuidv4(),
+      source: edge.source === id ? newId : edge.source,
+      target: edge.target === id ? newId : edge.target
+    }));
+    
+    setEdges(eds => [...eds, ...newEdges]);
+  };    
   const toggleSelect = (id) => {
     setNodes((nds) => nds.map((n) => n.id === id ? { ...n, data: { ...n.data, selected: !n.data.selected } } : n));
   };
